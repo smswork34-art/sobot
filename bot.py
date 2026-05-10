@@ -15,7 +15,7 @@ from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_applicati
 from aiohttp import web
 
 # --- НАСТРОЙКИ ---
-BOT_TOKEN = os.getenv("8764168047:AAGA3G3z8gjOwFVpcUBKBzEvME4FCntRvSs")  # Токен из переменных окружения
+BOT_TOKEN = os.getenv("BOT_TOKEN")  # Токен из переменных окружения
 ADMIN_IDS = [123456789]             # Твой Telegram ID
 WEBAPP_URL = "https://smswork34-art.github.io/jangel/index.html"  # GitHub Pages или другой хостинг HTML
 USERS_FILE = "users.json"

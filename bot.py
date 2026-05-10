@@ -248,61 +248,111 @@ async def broadcast_send(message: types.Message, state: FSMContext):
     )
     await state.clear()
 
-# --- КОМАНДЫ ДЛЯ ГРУППЫ ---
+# --- КОМАНДЫ ДЛЯ ГРУППЫ (УЛУЧШЕННЫЕ) ---
+import re
+from datetime import timedelta
+
+def parse_time(text: str):
+    """Парсит время: 1ч, 2час, 30м, 1д, 1ч30м и т.д."""
+    text = text.lower().replace(" ", "")
+    
+    total_seconds = 0
+    
+    # Дни
+    days = re.findall(r'(\d+)д', text)
+    if days:
+        total_seconds += int(days[0]) * 86400
+    
+    # Часы
+    hours = re.findall(r'(\d+)ч', text)
+    if hours:
+        total_seconds += int(hours[0]) * 3600
+    
+    # Минуты
+    minutes = re.findall(r'(\d+)м', text)
+    if minutes:
+        total_seconds += int(minutes[0]) * 60
+    
+    return total_seconds if total_seconds > 0 else None
+
+
+def format_time(seconds: int):
+    """Форматирует секунды в читаемый вид."""
+    if seconds >= 86400:
+        days = seconds // 86400
+        return f"{days} дн."
+    elif seconds >= 3600:
+        hours = seconds // 3600
+        return f"{hours} ч."
+    elif seconds >= 60:
+        minutes = seconds // 60
+        return f"{minutes} мин."
+    else:
+        return f"{seconds} сек."
+
 
 @dp.message(Command("ban"))
 async def cmd_ban(message: types.Message):
-    # Проверяем, что команда в группе
     if message.chat.type == "private":
         await message.answer("⛔ Эта команда работает только в группе.")
         return
 
-    # Проверяем, что пользователь — админ группы или владелец
     user_id = message.from_user.id
     chat_id = message.chat.id
     sender = await bot.get_chat_member(chat_id, user_id)
-    
+
     if sender.status not in ["creator", "administrator"]:
-        await message.answer("⛔ У вас нет прав для использования этой команды.")
+        await message.answer("⛔ У вас нет прав для блокировки.")
         return
 
-    # Проверяем, что бот — админ с правом бана
     bot_member = await bot.get_chat_member(chat_id, bot.id)
     if not bot_member.can_restrict_members:
-        await message.answer("⛔ Бот не имеет прав для блокировки пользователей.")
+        await message.answer("⛔ Бот не имеет прав для блокировки.")
         return
 
-    # Получаем цель: /ban @username или /ban в ответ на сообщение
     target = None
+    reason = "Не указана"
 
     if message.reply_to_message:
         target = message.reply_to_message.from_user
+        # Причина — текст после команды
+        parts = message.text.split(maxsplit=1) if message.text else []
+        if len(parts) > 1:
+            reason = parts[1]
     elif message.text and len(message.text.split()) > 1:
         username = message.text.split()[1].replace("@", "")
+        parts = message.text.split(maxsplit=2)
+        if len(parts) > 2:
+            reason = parts[2]
         try:
-            target = await bot.get_chat_member(chat_id, username)
-            target = target.user
+            member = await bot.get_chat_member(chat_id, username)
+            target = member.user
         except:
-            await message.answer("❌ Пользователь не найден.")
+            await message.answer("❌ Пользователь не найден в группе.")
             return
     else:
-        await message.answer("ℹ️ Использование: /ban @username или ответьте на сообщение пользователя.")
+        await message.answer(
+            "ℹ️ <b>Использование:</b>\n"
+            "<code>/ban @username</code> — заблокировать пользователя\n"
+            "<code>/ban @username причина</code> — с причиной\n"
+            "<code>/ban</code> (reply) — заблокировать автора сообщения"
+        )
         return
 
-    # Нельзя забанить админа или владельца
     target_member = await bot.get_chat_member(chat_id, target.id)
     if target_member.status in ["creator", "administrator"]:
         await message.answer("⛔ Нельзя заблокировать администратора.")
         return
 
-    # Бан
     try:
         await bot.ban_chat_member(chat_id, target.id)
         await message.answer(
-            f"🚫 <b>{target.first_name}</b> заблокирован.\n"
-            f"Заблокировал: {message.from_user.first_name}"
+            f"🚫 <b>Пользователь заблокирован</b>\n\n"
+            f"👤 <a href='tg://user?id={target.id}'>{target.first_name}</a>\n"
+            f"📝 Причина: {reason}\n"
+            f"👮 Админ: {message.from_user.first_name}"
         )
-        logger.info(f"Забанен {target.id} в чате {chat_id}")
+        logger.info(f"BAN: {target.id} в {chat_id} админом {user_id}")
     except Exception as e:
         await message.answer(f"❌ Ошибка: {e}")
 
@@ -318,27 +368,28 @@ async def cmd_unban(message: types.Message):
     sender = await bot.get_chat_member(chat_id, user_id)
 
     if sender.status not in ["creator", "administrator"]:
-        await message.answer("⛔ У вас нет прав для использования этой команды.")
+        await message.answer("⛔ У вас нет прав.")
         return
 
     bot_member = await bot.get_chat_member(chat_id, bot.id)
     if not bot_member.can_restrict_members:
-        await message.answer("⛔ Бот не имеет прав для разблокировки пользователей.")
+        await message.answer("⛔ Бот не имеет прав.")
         return
 
     if not message.text or len(message.text.split()) < 2:
-        await message.answer("ℹ️ Использование: /unban @username")
+        await message.answer("ℹ️ Использование: <code>/unban @username</code>")
         return
 
     username = message.text.split()[1].replace("@", "")
-    
+
     try:
         await bot.unban_chat_member(chat_id, username)
         await message.answer(
-            f"✅ Пользователь @{username} разблокирован.\n"
-            f"Разблокировал: {message.from_user.first_name}"
+            f"✅ <b>Пользователь разблокирован</b>\n\n"
+            f"👤 @{username}\n"
+            f"👮 Админ: {message.from_user.first_name}"
         )
-        logger.info(f"Разбанен @{username} в чате {chat_id}")
+        logger.info(f"UNBAN: @{username} в {chat_id}")
     except Exception as e:
         await message.answer(f"❌ Ошибка: {e}")
 
@@ -354,28 +405,58 @@ async def cmd_mute(message: types.Message):
     sender = await bot.get_chat_member(chat_id, user_id)
 
     if sender.status not in ["creator", "administrator"]:
-        await message.answer("⛔ У вас нет прав для использования этой команды.")
+        await message.answer("⛔ У вас нет прав.")
         return
 
     bot_member = await bot.get_chat_member(chat_id, bot.id)
     if not bot_member.can_restrict_members:
-        await message.answer("⛔ Бот не имеет прав для ограничения пользователей.")
+        await message.answer("⛔ Бот не имеет прав.")
         return
 
     target = None
+    duration = None
+    reason = "Не указана"
 
     if message.reply_to_message:
         target = message.reply_to_message.from_user
-    elif message.text and len(message.text.split()) > 1:
-        username = message.text.split()[1].replace("@", "")
+        # /mute 1ч причина
+        parts = message.text.split(maxsplit=2) if message.text else []
+        if len(parts) > 1:
+            duration = parse_time(parts[1])
+            if duration is None:
+                reason = parts[1] if len(parts) > 1 else "Не указана"
+            elif len(parts) > 2:
+                reason = parts[2]
+    elif message.text and len(message.text.split()) >= 2:
+        args = message.text.split()
+        username = args[1].replace("@", "")
+        
         try:
-            target = await bot.get_chat_member(chat_id, username)
-            target = target.user
+            member = await bot.get_chat_member(chat_id, username)
+            target = member.user
         except:
-            await message.answer("❌ Пользователь не найден.")
+            await message.answer("❌ Пользователь не найден в группе.")
             return
+        
+        if len(args) >= 3:
+            duration = parse_time(args[2])
+            if duration is None:
+                reason = " ".join(args[2:])
+            elif len(args) >= 4:
+                reason = " ".join(args[3:])
     else:
-        await message.answer("ℹ️ Использование: /mute @username или ответьте на сообщение.")
+        await message.answer(
+            "ℹ️ <b>Использование:</b>\n"
+            "<code>/mute @username 1ч</code> — мут на час\n"
+            "<code>/mute @username 30м причина</code> — мут на 30 мин\n"
+            "<code>/mute @username 2д</code> — мут на 2 дня\n"
+            "<code>/mute</code> (reply) — мут навсегда\n\n"
+            "<b>Форматы времени:</b> <code>1ч</code>, <code>30м</code>, <code>2д</code>, <code>1ч30м</code>"
+        )
+        return
+
+    if target is None:
+        await message.answer("❌ Не удалось определить пользователя.")
         return
 
     target_member = await bot.get_chat_member(chat_id, target.id)
@@ -384,11 +465,35 @@ async def cmd_mute(message: types.Message):
         return
 
     try:
-        await bot.restrict_chat_member(chat_id, target.id, permissions=types.ChatPermissions(can_send_messages=False))
-        await message.answer(
-            f"🔇 <b>{target.first_name}</b> лишён права голоса.\n"
-            f"Ограничил: {message.from_user.first_name}"
-        )
+        if duration:
+            until_date = datetime.now() + timedelta(seconds=duration)
+            await bot.restrict_chat_member(
+                chat_id, target.id,
+                permissions=types.ChatPermissions(can_send_messages=False),
+                until_date=until_date
+            )
+            
+            time_str = format_time(duration)
+            await message.answer(
+                f"🔇 <b>Пользователь ограничен</b>\n\n"
+                f"👤 <a href='tg://user?id={target.id}'>{target.first_name}</a>\n"
+                f"⏳ Срок: {time_str}\n"
+                f"📝 Причина: {reason}\n"
+                f"👮 Админ: {message.from_user.first_name}"
+            )
+        else:
+            await bot.restrict_chat_member(
+                chat_id, target.id,
+                permissions=types.ChatPermissions(can_send_messages=False)
+            )
+            await message.answer(
+                f"🔇 <b>Пользователь ограничен навсегда</b>\n\n"
+                f"👤 <a href='tg://user?id={target.id}'>{target.first_name}</a>\n"
+                f"📝 Причина: {reason}\n"
+                f"👮 Админ: {message.from_user.first_name}"
+            )
+        
+        logger.info(f"MUTE: {target.id} в {chat_id} на {duration or 'навсегда'}")
     except Exception as e:
         await message.answer(f"❌ Ошибка: {e}")
 
@@ -419,23 +524,31 @@ async def cmd_unmute(message: types.Message):
     elif message.text and len(message.text.split()) > 1:
         username = message.text.split()[1].replace("@", "")
         try:
-            target = await bot.get_chat_member(chat_id, username)
-            target = target.user
+            member = await bot.get_chat_member(chat_id, username)
+            target = member.user
         except:
             await message.answer("❌ Пользователь не найден.")
             return
     else:
-        await message.answer("ℹ️ Использование: /unmute @username")
+        await message.answer("ℹ️ Использование: <code>/unmute @username</code>")
         return
 
     try:
-        await bot.restrict_chat_member(chat_id, target.id, permissions=types.ChatPermissions(
-            can_send_messages=True,
-            can_send_media_messages=True,
-            can_send_other_messages=True,
-            can_add_web_page_previews=True
-        ))
-        await message.answer(f"🔊 <b>{target.first_name}</b> снова может говорить.")
+        await bot.restrict_chat_member(
+            chat_id, target.id,
+            permissions=types.ChatPermissions(
+                can_send_messages=True,
+                can_send_media_messages=True,
+                can_send_other_messages=True,
+                can_add_web_page_previews=True
+            )
+        )
+        await message.answer(
+            f"🔊 <b>Голос возвращён</b>\n\n"
+            f"👤 <a href='tg://user?id={target.id}'>{target.first_name}</a>\n"
+            f"👮 Админ: {message.from_user.first_name}"
+        )
+        logger.info(f"UNMUTE: {target.id} в {chat_id}")
     except Exception as e:
         await message.answer(f"❌ Ошибка: {e}")
 

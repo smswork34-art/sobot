@@ -14,7 +14,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 
 # --- НАСТРОЙКИ ---
 BOT_TOKEN = "8764168047:AAGA3G3z8gjOwFVpcUBKBzEvME4FCntRvSs"  # ⚠️ замени
-ADMIN_IDS = [123456789]         # ⚠️ замени на свой Telegram ID
+ADMIN_IDS = [7518728008]         # ⚠️ замени на свой Telegram ID
 WEBAPP_URL = "https://smswork34-art.github.io/jangel//index.html"  # ⚠️ замени на URL index.html
 USERS_FILE = "users.json"
 

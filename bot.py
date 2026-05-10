@@ -1,4 +1,4 @@
-# bot.py — ДЛЯ RENDER.COM
+# bot.py — POLLING VERSION (RENDER.COM)
 import asyncio
 import json
 import os
@@ -11,15 +11,12 @@ from aiogram.client.default import DefaultBotProperties
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.storage.memory import MemoryStorage
-from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
-from aiohttp import web
 
 # --- НАСТРОЙКИ ---
-BOT_TOKEN = ("8764168047:AAGA3G3z8gjOwFVpcUBKBzEvME4FCntRvSs")  # Токен из переменных окружения
-ADMIN_IDS = [123456789]             # Твой Telegram ID
-WEBAPP_URL = "https://smswork34-art.github.io/jangel/index.html"  # GitHub Pages или другой хостинг HTML
+BOT_TOKEN = "8764168047:AAGA3G3z8gjOwFVpcUBKBzEvME4FCntRvSs"  # ⚠️ замени
+ADMIN_IDS = [123456789]         # ⚠️ замени на свой Telegram ID
+WEBAPP_URL = "https://smswork34-art.github.io/jangel//index.html"  # ⚠️ замени на URL index.html
 USERS_FILE = "users.json"
-RENDER_URL = ("https://lvk-bot.onrender.comL", "")  # Render сам даст URL
 
 # --- ЛОГИРОВАНИЕ ---
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
@@ -47,6 +44,7 @@ def add_user(user: types.User):
             "joined_at": datetime.now().strftime("%d.%m.%Y %H:%M")
         }
         save_users(users)
+        logger.info(f"Новый пользователь: {user.first_name} (ID: {user.id})")
 
 def get_all_users():
     return load_users()
@@ -61,7 +59,10 @@ dp = Dispatcher(storage=MemoryStorage())
 # --- КЛАВИАТУРЫ ---
 def main_keyboard():
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🚀 Открыть LVK Service", web_app=WebAppInfo(url=WEBAPP_URL))],
+        [InlineKeyboardButton(
+            text="🚀 Открыть LVK Service",
+            web_app=WebAppInfo(url=WEBAPP_URL)
+        )],
         [InlineKeyboardButton(text="💬 Поддержка", url="https://t.me/LVKSupport")],
         [InlineKeyboardButton(text="🛡 Гарант", url="https://t.me/Sponge_05")]
     ])
@@ -74,11 +75,12 @@ def admin_keyboard():
         [InlineKeyboardButton(text="🔙 Выйти", callback_data="admin_exit")]
     ])
 
-# --- FSM ---
+# --- FSM ДЛЯ РАССЫЛКИ ---
 class BroadcastState(StatesGroup):
     waiting_for_message = State()
 
 # --- ОБРАБОТЧИКИ ---
+
 @dp.message(Command("start"))
 async def cmd_start(message: types.Message):
     add_user(message.from_user)
@@ -97,17 +99,26 @@ async def cmd_admin(message: types.Message):
     else:
         await message.answer("⛔ У вас нет доступа.")
 
+# --- CALLBACKS ---
+
 @dp.callback_query(F.data == "admin_exit")
 async def admin_exit(callback: types.CallbackQuery):
-    await callback.message.edit_text("👋 <b>LVK Service</b>\n\nНажмите кнопку, чтобы открыть сервис 👇", reply_markup=main_keyboard())
+    await callback.message.edit_text(
+        "👋 <b>LVK Service</b>\n\nНажмите кнопку, чтобы открыть сервис 👇",
+        reply_markup=main_keyboard()
+    )
     await callback.answer("Вы вышли из админ-панели")
 
 @dp.callback_query(F.data == "admin_stats")
 async def admin_stats(callback: types.CallbackQuery):
     count = get_users_count()
     await callback.message.edit_text(
-        f"📊 <b>Статистика бота</b>\n\n👥 Всего пользователей: <b>{count}</b>\n📅 {datetime.now().strftime('%d.%m.%Y %H:%M')}",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="🔙 Назад", callback_data="admin_back")]])
+        f"📊 <b>Статистика бота</b>\n\n"
+        f"👥 Всего пользователей: <b>{count}</b>\n"
+        f"📅 {datetime.now().strftime('%d.%m.%Y %H:%M')}",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🔙 Назад", callback_data="admin_back")]
+        ])
     )
     await callback.answer()
 
@@ -120,22 +131,35 @@ async def admin_users(callback: types.CallbackQuery):
         text = f"👥 <b>Пользователи ({len(users)})</b>\n\n"
         for uid, data in list(users.items())[-10:]:
             username = f"@{data['username']}" if data.get('username') else "без username"
-            text += f"• <b>{data['first_name']}</b> {username} — {data['joined_at']}\n"
+            text += f"• <b>{data['first_name']}</b> {username} — ID: <code>{data['id']}</code>\n"
         if len(users) > 10:
             text += f"\n<i>Показаны последние 10 из {len(users)}</i>"
-    await callback.message.edit_text(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="🔙 Назад", callback_data="admin_back")]]))
+
+    await callback.message.edit_text(
+        text,
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🔙 Назад", callback_data="admin_back")]
+        ])
+    )
     await callback.answer()
 
 @dp.callback_query(F.data == "admin_back")
 async def admin_back(callback: types.CallbackQuery):
-    await callback.message.edit_text("🔐 <b>Админ-панель</b>\nВыберите действие:", reply_markup=admin_keyboard())
+    await callback.message.edit_text(
+        "🔐 <b>Админ-панель</b>\nВыберите действие:",
+        reply_markup=admin_keyboard()
+    )
     await callback.answer()
 
 @dp.callback_query(F.data == "admin_broadcast")
 async def admin_broadcast(callback: types.CallbackQuery, state: FSMContext):
     await callback.message.edit_text(
-        "📨 <b>Рассылка</b>\n\nОтправьте сообщение для всех пользователей.\nДля отмены — /cancel",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="🔙 Отмена", callback_data="admin_back")]])
+        "📨 <b>Рассылка</b>\n\n"
+        "Отправьте сообщение, которое будет разослано всем пользователям.\n"
+        "Для отмены отправьте /cancel",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🔙 Отмена", callback_data="admin_back")]
+        ])
     )
     await state.set_state(BroadcastState.waiting_for_message)
     await callback.answer()
@@ -146,35 +170,42 @@ async def broadcast_send(message: types.Message, state: FSMContext):
         await state.clear()
         await message.answer("❌ Рассылка отменена.", reply_markup=admin_keyboard())
         return
+
     users = get_all_users()
     success = 0
     fail = 0
-    await message.answer(f"📨 Рассылаю на {len(users)} пользователей...")
+
+    await message.answer(f"📨 Начинаю рассылку на {len(users)} пользователей...")
+
     for uid in users:
         try:
-            await bot.copy_message(chat_id=int(uid), from_chat_id=message.chat.id, message_id=message.message_id)
+            await bot.copy_message(
+                chat_id=int(uid),
+                from_chat_id=message.chat.id,
+                message_id=message.message_id
+            )
             success += 1
             await asyncio.sleep(0.05)
         except Exception as e:
             fail += 1
-            logger.error(f"Ошибка {uid}: {e}")
-    await message.answer(f"✅ <b>Готово!</b>\n✓ Успешно: {success}\n✗ Ошибок: {fail}", reply_markup=admin_keyboard())
+            logger.error(f"Ошибка отправки {uid}: {e}")
+
+    await message.answer(
+        f"✅ <b>Рассылка завершена!</b>\n\n"
+        f"✓ Успешно: {success}\n"
+        f"✗ Ошибок: {fail}",
+        reply_markup=admin_keyboard()
+    )
     await state.clear()
 
-# --- ЗАПУСК (WEBHOOK ДЛЯ RENDER) ---
-async def on_startup(bot: Bot):
-    await bot.set_webhook(f"{RENDER_URL}/webhook")
-    logger.info(f"Webhook установлен: {RENDER_URL}/webhook")
-
+# --- ЗАПУСК (POLLING) ---
 async def main():
-    dp.startup.register(on_startup)
-    app = web.Application()
-    webhook_handler = SimpleRequestHandler(dispatcher=dp, bot=bot)
-    webhook_handler.register(app, path="/webhook")
-    setup_application(app, dp, bot=bot)
+    await bot.delete_webhook(drop_pending_updates=True)
     logger.info("Бот запущен!")
-    return app
+    await dp.start_polling(bot)
 
 if __name__ == "__main__":
-    app = asyncio.run(main())
-    web.run_app(app, host="0.0.0.0", port=int(os.getenv("PORT", 8000)))
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        logger.info("Бот остановлен.")

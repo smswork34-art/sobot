@@ -15,11 +15,11 @@ from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_applicati
 from aiohttp import web
 
 # --- НАСТРОЙКИ ---
-BOT_TOKEN = os.getenv("BOT_TOKEN")  # Токен из переменных окружения
+BOT_TOKEN = ("8764168047:AAGA3G3z8gjOwFVpcUBKBzEvME4FCntRvSs")  # Токен из переменных окружения
 ADMIN_IDS = [123456789]             # Твой Telegram ID
 WEBAPP_URL = "https://smswork34-art.github.io/jangel/index.html"  # GitHub Pages или другой хостинг HTML
 USERS_FILE = "users.json"
-RENDER_URL = os.getenv("RENDER_EXTERNAL_URL", "")  # Render сам даст URL
+RENDER_URL = ("https://lvk-bot.onrender.comL", "")  # Render сам даст URL
 
 # --- ЛОГИРОВАНИЕ ---
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")

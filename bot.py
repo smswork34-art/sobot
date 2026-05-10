@@ -13,9 +13,9 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.storage.memory import MemoryStorage
 
 # --- НАСТРОЙКИ ---
-BOT_TOKEN = "8764168047:AAGA3G3z8gjOwFVpcUBKBzEvME4FCntRvSs"  # ⚠️ замени
-ADMIN_IDS = [7518728008]         # ⚠️ замени на свой Telegram ID
-WEBAPP_URL = "https://smswork34-art.github.io/jangel//index.html"  # ⚠️ замени на URL index.html
+BOT_TOKEN = "8764168047:AAGA3G3z8gjOwFVpcUBKBzEvME4FCntRvSs"
+ADMIN_IDS = [7518728008]
+WEBAPP_URL = "https://smswork34-art.github.io/jangel//index.html"
 USERS_FILE = "users.json"
 
 # --- ЛОГИРОВАНИЕ ---
@@ -60,11 +60,17 @@ dp = Dispatcher(storage=MemoryStorage())
 def main_keyboard():
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(
-            text="🚀 Открыть LVK Service",
+            text="🚀 ОТКРЫТЬ LVK SERVICE",
             web_app=WebAppInfo(url=WEBAPP_URL)
         )],
-        [InlineKeyboardButton(text="💬 Поддержка", url="https://t.me/LVKSupport")],
-        [InlineKeyboardButton(text="🛡 Гарант", url="https://t.me/Sponge_05")]
+        [InlineKeyboardButton(
+            text="💬 Поддержка",
+            callback_data="support_info"
+        )],
+        [InlineKeyboardButton(
+            text="🛡 Гарант",
+            callback_data="garant_info"
+        )]
     ])
 
 def admin_keyboard():
@@ -99,7 +105,51 @@ async def cmd_admin(message: types.Message):
     else:
         await message.answer("⛔ У вас нет доступа.")
 
-# --- CALLBACKS ---
+# --- CALLBACKS: ПОДДЕРЖКА И ГАРАНТ ---
+
+@dp.callback_query(F.data == "support_info")
+async def support_info(callback: types.CallbackQuery):
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="💬 Написать в поддержку", url="https://t.me/LVKSupport")],
+        [InlineKeyboardButton(text="🔙 Назад", callback_data="back_to_main")]
+    ])
+    await callback.message.edit_text(
+        "💬 <b>Поддержка LVK Service</b>\n\n"
+        "Если у вас возникли вопросы, проблемы с работой сервиса "
+        "или требуется помощь — нажмите кнопку ниже, чтобы связаться с нами.\n\n"
+        "Мы обязательно поможем! 🫡",
+        reply_markup=keyboard
+    )
+    await callback.answer()
+
+@dp.callback_query(F.data == "garant_info")
+async def garant_info(callback: types.CallbackQuery):
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🛡 Связаться с гарантом", url="https://t.me/Sponge_05")],
+        [InlineKeyboardButton(text="🔙 Назад", callback_data="back_to_main")]
+    ])
+    await callback.message.edit_text(
+        "🛡 <b>Гарант сделок — СПАНЧ</b>\n\n"
+        "Гарант обеспечивает безопасное проведение сделок с использованием USDT.\n\n"
+        "Как это работает:\n"
+        "• Покупатель переводит средства гаранту\n"
+        "• Продавец передаёт товар/услугу\n"
+        "• Гарант переводит средства продавцу\n\n"
+        "Сделка проходит безопасно для обеих сторон. "
+        "Нажмите кнопку ниже, чтобы связаться с гарантом.",
+        reply_markup=keyboard
+    )
+    await callback.answer()
+
+@dp.callback_query(F.data == "back_to_main")
+async def back_to_main(callback: types.CallbackQuery):
+    await callback.message.edit_text(
+        "👋 <b>LVK Service</b>\n\nНажмите кнопку, чтобы открыть сервис 👇",
+        reply_markup=main_keyboard()
+    )
+    await callback.answer()
+
+# --- CALLBACKS: АДМИНКА ---
 
 @dp.callback_query(F.data == "admin_exit")
 async def admin_exit(callback: types.CallbackQuery):

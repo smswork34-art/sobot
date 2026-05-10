@@ -72,7 +72,7 @@ def main_keyboard():
             callback_data="garant_info"
         )]
     ])
-
+    
 def admin_keyboard():
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="📊 Статистика", callback_data="admin_stats")],

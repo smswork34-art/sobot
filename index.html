@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Crypto Payment Gateway</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+        
+        .container {
+            background: white;
+            border-radius: 20px;
+            padding: 40px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            max-width: 500px;
+            width: 100%;
+        }
+        
+        h1 {
+            text-align: center;
+            color: #333;
+            margin-bottom: 30px;
+            font-size: 28px;
+        }
+        
+        .payment-form {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        
+        label {
+            font-weight: 600;
+            color: #555;
+            font-size: 14px;
+        }
+        
+        input, select {
+            padding: 12px 16px;
+            border: 2px solid #e0e0e0;
+            border-radius: 10px;
+            font-size: 16px;
+            transition: all 0.3s;
+        }
+        
+        input:focus, select:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        
+        .crypto-options {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        
+        .crypto-option {
+            flex: 1;
+            min-width: 100px;
+            padding: 15px;
+            border: 2px solid #e0e0e0;
+            border-radius: 10px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        
+        .crypto-option:hover {
+            border-color: #667eea;
+            background: #f8f9ff;
+        }
+        
+        .crypto-option.active {
+            border-color: #667eea;
+            background: #f0f3ff;
+            font-weight: 600;
+        }
+        
+        .pay-button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 16px;
+            border-radius: 10px;
+            font-size: 18px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+        
+        .pay-button:hover {
+            transform: translateY(-2px);
+        }
+        
+        .pay-button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+        
+        .status {
+            text-align: center;
+            margin-top: 20px;
+            padding: 10px;
+            border-radius: 10px;
+            display: none;
+        }
+        
+        .status.success {
+            background: #d4edda;
+            color: #155724;
+            display: block;
+        }
+        
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+            display: block;
+        }
+        
+        .status.loading {
+            background: #d1ecf1;
+            color: #0c5460;
+            display: block;
+        }
+        
+        .qr-code {
+            text-align: center;
+            margin: 20px 0;
+        }
+        
+        .qr-code img {
+            max-width: 200px;
+        }
+        
+        .crypto-address {
+            background: #f5f5f5;
+            padding: 15px;
+            border-radius: 10px;
+            word-break: break-all;
+            margin: 20px 0;
+            font-family: monospace;
+            font-size: 14px;
+        }
+        
+        .copy-button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        
+        .copy-button:hover {
+            background: #0056b3;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🚀 Crypto Payment Gateway</h1>
+        
+        <form class="payment-form" id="paymentForm">
+            <div class="form-group">
+                <label for="amount">Сумма (USDT)</label>
+                <input type="number" id="amount" name="amount" 
+                       placeholder="Введите сумму" min="10" required>
+            </div>
+            
+            <div class="form-group">
+                <label>Выберите криптовалюту</label>
+                <div class="crypto-options">
+                    <div class="crypto-option active" data-crypto="USDT">💵 USDT</div>
+                    <div class="crypto-option" data-crypto="BTC">₿ BTC</div>
+                    <div class="crypto-option" data-crypto="ETH">Ξ ETH</div>
+                </div>
+            </div>
+            
+            <div class="form-group">
+                <label for="telegram_id">Telegram ID</label>
+                <input type="text" id="telegram_id" name="telegram_id" 
+                       placeholder="Ваш Telegram ID">
+            </div>
+            
+            <button type="submit" class="pay-button" id="payButton">
+                Создать платеж
+            </button>
+        </form>
+        
+        <div class="status" id="paymentStatus"></div>
+    </div>
+    
+    <script>
+        // Инициализация Telegram WebApp
+        const tg = window.Telegram.WebApp;
+        tg.expand();
+        
+        // Установка ID пользователя из Telegram
+        const telegramId = tg.initDataUnsafe?.user?.id;
+        if (telegramId) {
+            document.getElementById('telegram_id').value = telegramId;
+        }
+        
+        // Выбор криптовалюты
+        document.querySelectorAll('.crypto-option').forEach(option => {
+            option.addEventListener('click', function() {
+                document.querySelectorAll('.crypto-option').forEach(o => 
+                    o.classList.remove('active'));
+                this.classList.add('active');
+            });
+        });
+        
+        // Обработка формы
+        document.getElementById('paymentForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const amount = document.getElementById('amount').value;
+            const telegramId = document.getElementById('telegram_id').value;
+            const crypto = document.querySelector('.crypto-option.active').dataset.crypto;
+            const payButton = document.getElementById('payButton');
+            const statusDiv = document.getElementById('paymentStatus');
+            
+            if (!amount || amount < 10) {
+                showStatus('Минимальная сумма: 10 USDT', 'error');
+                return;
+            }
+            
+            payButton.disabled = true;
+            showStatus('Создаем платеж...', 'loading');
+            
+            try {
+                const response = await fetch('/create-payment', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        amount: amount,
+                        telegram_id: telegramId,
+                        payment_method: crypto
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (data.payment_id) {
+                    showStatus(`Платеж создан! ID: ${data.payment_id}`, 'success');
+                    
+                    // Отправляем данные в Telegram
+                    tg.sendData(JSON.stringify({
+                        action: 'payment_created',
+                        payment_id: data.payment_id,
+                        amount: amount,
+                        crypto: crypto
+                    }));
+                    
+                    // Перенаправляем на страницу оплаты
+                    setTimeout(() => {
+                        window.location.href = data.payment_url;
+                    }, 1500);
+                }
+            } catch (error) {
+                showStatus('Ошибка при создании платежа', 'error');
+            } finally {
+                payButton.disabled = false;
+            }
+        });
+        
+        function showStatus(message, type) {
+            const statusDiv = document.getElementById('paymentStatus');
+            statusDiv.textContent = message;
+            statusDiv.className = `status ${type}`;
+        }
+    </script>
+</body>
+</html>

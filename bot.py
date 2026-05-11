@@ -13,7 +13,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.storage.memory import MemoryStorage
 
 # --- НАСТРОЙКИ ---
-BOT_TOKEN = "8490748623:AAGSbOoSItyMng1jtxn4C-8xoE0J3iXpuWg"
+BOT_TOKEN = "8764168047:AAGA3G3z8gjOwFVpcUBKBzEvME4FCntRvSs"
 ADMIN_IDS = [7518728008]
 WEBAPP_URL = "https://smswork34-art.github.io/jangel//index.html"
 USERS_FILE = "users.json"

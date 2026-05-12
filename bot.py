@@ -3,7 +3,7 @@ import os
 import sqlite3
 from datetime import datetime
 from aiogram import Bot, Dispatcher, types, F
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo, FSInputFile
 from aiogram.filters import Command
 from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
 from aiohttp import web
@@ -33,16 +33,6 @@ def init_db():
             created_at TEXT,
             last_active TEXT,
             blocked INTEGER DEFAULT 0
-        )
-    """)
-    c.execute("""
-        CREATE TABLE IF NOT EXISTS tickets (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER,
-            username TEXT,
-            question TEXT,
-            status TEXT DEFAULT 'open',
-            created_at TEXT
         )
     """)
     conn.commit()
@@ -95,16 +85,32 @@ async def cmd_start(msg: types.Message):
         kb.inline_keyboard.append([
             InlineKeyboardButton(text="◆ Админ-панель", web_app=WebAppInfo(url=ADMIN_PANEL_URL))
         ])
-    await msg.answer(
-        "<b>◆ USDT RUB Обменник</b>\n\n"
-        "<i>Моментальный обмен USDT на RUB</i>\n\n"
-        "<blockquote>Курс фиксируется при создании заявки\n"
-        "Комиссия сервиса 0.5%\n"
-        "Выплаты на карты СБП</blockquote>\n"
-        "<b>◆ Для начала нажмите кнопку ниже.</b>",
-        reply_markup=kb,
-        parse_mode="HTML"
-    )
+    try:
+        photo = FSInputFile("banner.jpg")
+        await msg.answer_photo(
+            photo,
+            caption=(
+                "<b>◆ USDT RUB Обменник</b>\n\n"
+                "<i>Моментальный обмен USDT на RUB</i>\n\n"
+                "<blockquote>Курс фиксируется при создании заявки\n"
+                "Комиссия сервиса 0.5%\n"
+                "Выплаты на карты СБП</blockquote>\n"
+                "<b>◆ Для начала нажмите кнопку ниже.</b>"
+            ),
+            reply_markup=kb,
+            parse_mode="HTML"
+        )
+    except Exception:
+        await msg.answer(
+            "<b>◆ USDT RUB Обменник</b>\n\n"
+            "<i>Моментальный обмен USDT на RUB</i>\n\n"
+            "<blockquote>Курс фиксируется при создании заявки\n"
+            "Комиссия сервиса 0.5%\n"
+            "Выплаты на карты СБП</blockquote>\n"
+            "<b>◆ Для начала нажмите кнопку ниже.</b>",
+            reply_markup=kb,
+            parse_mode="HTML"
+        )
 
 @dp.callback_query(F.data == "rate")
 async def rate_callback(call: types.CallbackQuery):

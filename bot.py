@@ -62,31 +62,6 @@ def save_user(user: types.User):
     conn.commit()
     conn.close()
 
-def create_ticket(user_id, username, question):
-    conn = sqlite3.connect("bot.db")
-    c = conn.cursor()
-    c.execute("INSERT INTO tickets (user_id, username, question, status, created_at) VALUES (?, ?, ?, 'open', ?)",
-              (user_id, username, question, datetime.utcnow().isoformat()))
-    ticket_id = c.lastrowid
-    conn.commit()
-    conn.close()
-    return ticket_id
-
-def close_ticket(user_id):
-    conn = sqlite3.connect("bot.db")
-    c = conn.cursor()
-    c.execute("UPDATE tickets SET status = 'closed' WHERE user_id = ? AND status = 'open'", (user_id,))
-    conn.commit()
-    conn.close()
-
-def get_open_ticket(user_id):
-    conn = sqlite3.connect("bot.db")
-    c = conn.cursor()
-    c.execute("SELECT * FROM tickets WHERE user_id = ? AND status = 'open' ORDER BY id DESC LIMIT 1", (user_id,))
-    ticket = c.fetchone()
-    conn.close()
-    return ticket
-
 def get_all_users():
     conn = sqlite3.connect("bot.db")
     c = conn.cursor()
@@ -114,8 +89,7 @@ async def cmd_start(msg: types.Message):
         [
             InlineKeyboardButton(text="◎ Курс", callback_data="rate", style="primary"),
             InlineKeyboardButton(text="◈ Поддержка", callback_data="support", style="primary")
-        ],
-        [InlineKeyboardButton(text="◇ Задать вопрос", callback_data="ask_question", style="danger")]
+        ]
     ])
     if is_admin(msg.from_user.id):
         kb.inline_keyboard.append([
@@ -154,50 +128,18 @@ async def rate_callback(call: types.CallbackQuery):
 async def support_callback(call: types.CallbackQuery):
     await call.answer()
     kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="◈ Написать в поддержку", url=f"https://t.me/{ADMIN_USERNAME.lstrip('@')}")],
-        [InlineKeyboardButton(text="◇ Задать вопрос здесь", callback_data="ask_question", style="danger")],
         [InlineKeyboardButton(text="◈ В главное меню", callback_data="back_to_main", style="primary")]
     ])
     await call.message.answer(
         "<b>◈ Поддержка</b>\n\n"
-        "<i>По вопросам обмена и проверки транзакций</i>\n\n"
-        "<blockquote>Возврат средств\n"
-        "Время ответа: 5-15 минут</blockquote>\n"
-        "<b>Выберите способ связи:</b>",
+        "<i>Чтобы создать тикет, введите команду:</i>\n"
+        "<code>/ticket ваш вопрос</code>\n\n"
+        "<blockquote>Пример:\n"
+        "/ticket Не пришли деньги после оплаты</blockquote>\n"
+        "<b>Время ответа: 5-15 минут.</b>",
         reply_markup=kb,
         parse_mode="HTML"
     )
-
-@dp.callback_query(F.data == "ask_question")
-async def ask_question_callback(call: types.CallbackQuery):
-    await call.answer()
-    ticket = get_open_ticket(call.from_user.id)
-    if ticket:
-        kb = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="◇ Закрыть тикет", callback_data="close_ticket", style="danger")]
-        ])
-        await call.message.answer(
-            "<b>◇ У вас уже есть открытый тикет.</b>\n"
-            "<i>Дождитесь ответа или закройте текущий тикет.</i>",
-            reply_markup=kb,
-            parse_mode="HTML"
-        )
-        return
-    kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="◇ Отмена", callback_data="back_to_main", style="danger")]
-    ])
-    await call.message.answer(
-        "<b>◇ Задайте ваш вопрос</b>\n\n"
-        "<i>Напишите сообщение с вопросом, и я передам его в поддержку.</i>",
-        reply_markup=kb,
-        parse_mode="HTML"
-    )
-
-@dp.callback_query(F.data == "close_ticket")
-async def close_ticket_callback(call: types.CallbackQuery):
-    await call.answer()
-    close_ticket(call.from_user.id)
-    await call.message.answer("<b>◇ Тикет закрыт.</b>", parse_mode="HTML")
 
 @dp.callback_query(F.data == "admin_stats")
 async def admin_stats_callback(call: types.CallbackQuery):
@@ -213,8 +155,7 @@ async def back_to_main_callback(call: types.CallbackQuery):
         [
             InlineKeyboardButton(text="◎ Курс", callback_data="rate", style="primary"),
             InlineKeyboardButton(text="◈ Поддержка", callback_data="support", style="primary")
-        ],
-        [InlineKeyboardButton(text="◇ Задать вопрос", callback_data="ask_question", style="danger")]
+        ]
     ])
     if is_admin(call.from_user.id):
         kb.inline_keyboard.append([
@@ -222,9 +163,34 @@ async def back_to_main_callback(call: types.CallbackQuery):
         ])
     await call.message.answer("<b>◆ Главное меню</b>", reply_markup=kb, parse_mode="HTML")
 
+@dp.message(Command("ticket"))
+async def ticket_command(msg: types.Message):
+    save_user(msg.from_user)
+    text = msg.text.replace("/ticket", "").strip()
+    if not text:
+        await msg.answer(
+            "<b>◇ Укажите вопрос после команды.</b>\n"
+            "<i>Пример:</i> <code>/ticket Не пришли деньги</code>",
+            parse_mode="HTML"
+        )
+        return
+
+    user_info = f"@{msg.from_user.username}" if msg.from_user.username else f"ID: {msg.from_user.id}"
+    admin_text = (
+        f"<b>◇ Новый тикет</b>\n"
+        f"<b>От:</b> {user_info}\n"
+        f"<code>{text}</code>"
+    )
+    await bot.send_message(ADMIN_ID, admin_text, parse_mode="HTML")
+    await msg.answer(
+        "<b>◇ Тикет открыт</b>\n"
+        "<i>Ваш вопрос отправлен. Ожидайте ответа.</i>\n\n"
+        "Для закрытия тикета: /close",
+        parse_mode="HTML"
+    )
+
 @dp.message(Command("close"))
 async def close_command(msg: types.Message):
-    close_ticket(msg.from_user.id)
     await msg.answer("<b>◇ Тикет закрыт.</b>", parse_mode="HTML")
 
 @dp.message(Command("rate"))
@@ -239,10 +205,12 @@ async def rate_command(msg: types.Message):
 
 @dp.message(Command("support"))
 async def support_command(msg: types.Message):
-    kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="◈ Поддержка", url=f"https://t.me/{ADMIN_USERNAME.lstrip('@')}")]
-    ])
-    await msg.answer("<b>Связь с поддержкой:</b>", reply_markup=kb, parse_mode="HTML")
+    await msg.answer(
+        "<b>◈ Поддержка</b>\n\n"
+        "<i>Чтобы создать тикет, введите:</i>\n"
+        "<code>/ticket ваш вопрос</code>",
+        parse_mode="HTML"
+    )
 
 @dp.message(Command("stats"))
 async def stats_command(msg: types.Message):
@@ -283,34 +251,18 @@ async def admin_command(msg: types.Message):
 @dp.message(F.text)
 async def handle_message(msg: types.Message):
     save_user(msg.from_user)
-    ticket = get_open_ticket(msg.from_user.id)
-    if ticket:
-        user_info = f"@{msg.from_user.username}" if msg.from_user.username else f"ID: {msg.from_user.id}"
-        text = (
-            f"<b>◇ Тикет #{ticket[0]}</b>\n"
-            f"<b>От:</b> {user_info}\n"
-            f"<code>{msg.text}</code>"
-        )
-        await bot.send_message(ADMIN_ID, text, parse_mode="HTML")
-        await msg.answer(
-            "<b>◇ Тикет открыт</b>\n"
-            "<i>Ваш вопрос отправлен. Ожидайте ответа.</i>",
-            parse_mode="HTML"
-        )
-    else:
-        kb = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="◆ Открыть обменник", web_app=WebAppInfo(url=WEBAPP_URL))],
-            [
-                InlineKeyboardButton(text="◎ Курс", callback_data="rate", style="primary"),
-                InlineKeyboardButton(text="◈ Поддержка", callback_data="support", style="primary")
-            ],
-            [InlineKeyboardButton(text="◇ Задать вопрос", callback_data="ask_question", style="danger")]
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="◆ Открыть обменник", web_app=WebAppInfo(url=WEBAPP_URL))],
+        [
+            InlineKeyboardButton(text="◎ Курс", callback_data="rate", style="primary"),
+            InlineKeyboardButton(text="◈ Поддержка", callback_data="support", style="primary")
+        ]
+    ])
+    if is_admin(msg.from_user.id):
+        kb.inline_keyboard.append([
+            InlineKeyboardButton(text="◆ Админ-панель", web_app=WebAppInfo(url=ADMIN_PANEL_URL))
         ])
-        if is_admin(msg.from_user.id):
-            kb.inline_keyboard.append([
-                InlineKeyboardButton(text="◆ Админ-панель", web_app=WebAppInfo(url=ADMIN_PANEL_URL))
-            ])
-        await msg.answer("<b>◆ Используйте кнопки ниже.</b>", reply_markup=kb, parse_mode="HTML")
+    await msg.answer("<b>◆ Используйте кнопки ниже.</b>", reply_markup=kb, parse_mode="HTML")
 
 @dp.message(F.reply_to_message)
 async def handle_reply(msg: types.Message):

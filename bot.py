@@ -288,6 +288,11 @@ async def admin_command(msg: types.Message):
     ])
     await msg.answer("<b>◆ Админ-меню</b>", reply_markup=kb, parse_mode="HTML")
 
+@dp.message(Command("test"))
+async def test_cmd(msg: types.Message):
+    await bot.send_message(SUPPORT_GROUP, "Тест: бот в группе!")
+    await msg.answer("Отправил тест в группу")
+
 @dp.message(F.text)
 async def handle_message(msg: types.Message):
     save_user(msg.from_user)

@@ -1,79 +1,110 @@
 import asyncio
-from aiogram import Bot, Dispatcher, types
+from aiogram import Bot, Dispatcher, types, F
+from aiogram.types import (
+    InlineKeyboardMarkup, InlineKeyboardButton,
+    WebAppInfo, ReplyKeyboardMarkup, KeyboardButton
+)
 from aiogram.filters import Command
-from aiogram.types import WebAppInfo, InlineKeyboardMarkup, InlineKeyboardButton
-from config import BOT_TOKEN, WEBAPP_URL
-import logging
+
+BOT_TOKEN = "8783429061:AAHdivmiLwPts6u2cOUSRp_78RGf81PSP1w"
+ADMIN_USERNAME = "@support_usdt_rub"
+WEBAPP_URL = "https://твой-сайт.com/index.html"
 
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 
 @dp.message(Command("start"))
-async def cmd_start(message: types.Message):
-    """Обработчик команды /start"""
-    user_id = message.from_user.id
-    
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+async def cmd_start(msg: types.Message):
+    kb = ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text="Обмен USDT на RUB", web_app=WebAppInfo(url=WEBAPP_URL))],
+            [KeyboardButton(text="Поддержка"), KeyboardButton(text="Курс")]
+        ],
+        resize_keyboard=True,
+        input_field_placeholder="Выберите действие"
+    )
+    await msg.answer(
+        "USDT на RUB - быстрый обмен.\n\n"
+        "Нажмите кнопку ниже для создания заявки.\n"
+        "Курс фиксируется на момент создания.",
+        reply_markup=kb
+    )
+
+@dp.message(F.text == "Обмен USDT на RUB")
+async def exchange_btn(msg: types.Message):
+    kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(
-            text="💳 Открыть платежный шлюз",
-            web_app=WebAppInfo(url=f"{WEBAPP_URL}")
-        )],
-        [InlineKeyboardButton(
-            text="📊 Мои платежи",
-            callback_data="my_payments"
-        )],
-        [InlineKeyboardButton(
-            text="ℹ️ Помощь",
-            callback_data="help"
+            text="Создать заявку",
+            web_app=WebAppInfo(url=WEBAPP_URL)
         )]
     ])
-    
-    await message.answer(
-        f"👋 Привет, {message.from_user.first_name}!\n\n"
-        "Я помогу тебе совершать крипто-платежи.\n"
-        "Выбери действие:",
-        reply_markup=keyboard
+    await msg.answer(
+        "Нажмите кнопку для перехода в обменник.",
+        reply_markup=kb
     )
 
-@dp.message(Command("pay"))
-async def cmd_pay(message: types.Message):
-    """Команда для создания платежа"""
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+@dp.message(F.text == "Курс")
+async def rate_cmd(msg: types.Message):
+    await msg.answer(
+        "Актуальный курс: 72 RUB за 1 USDT\n"
+        "Комиссия сервиса: 0.5%\n"
+        "Минимальная сумма: 10 USDT\n\n"
+        "Курс фиксируется при создании заявки."
+    )
+
+@dp.message(F.text == "Поддержка")
+async def support_cmd(msg: types.Message):
+    kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(
-            text="💰 Создать платеж",
-            web_app=WebAppInfo(url=f"{WEBAPP_URL}/create")
+            text="Написать в поддержку",
+            url=f"https://t.me/{ADMIN_USERNAME.lstrip('@')}"
         )]
     ])
-    
-    await message.answer(
-        "Выбери сумму для оплаты:",
-        reply_markup=keyboard
+    await msg.answer(
+        "По вопросам обмена, проверки транзакции или возврата средств "
+        "обратитесь в поддержку.\n\n"
+        "Время ответа: 5-15 минут.",
+        reply_markup=kb
     )
 
-@dp.callback_query(lambda c: c.data == "my_payments")
-async def process_my_payments(callback: types.CallbackQuery):
-    await callback.message.answer(
-        "📊 Здесь будет история твоих платежей"
+@dp.message(Command("support"))
+async def support_command(msg: types.Message):
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(
+            text="Поддержка",
+            url=f"https://t.me/{ADMIN_USERNAME.lstrip('@')}"
+        )]
+    ])
+    await msg.answer(
+        "Связь с поддержкой:",
+        reply_markup=kb
     )
-    await callback.answer()
 
-@dp.callback_query(lambda c: c.data == "help")
-async def process_help(callback: types.CallbackQuery):
-    await callback.message.answer(
-        "ℹ️ Помощь\n\n"
-        "Для создания платежа используй команду /pay\n"
-        "Поддерживаемые валюты: USDT, BTC, ETH\n"
-        "Минимальная сумма: 10 USDT"
+@dp.message(Command("rate"))
+async def rate_command(msg: types.Message):
+    await msg.answer(
+        "Курс: 72 RUB за 1 USDT\n"
+        "Комиссия: 0.5%\n"
+        "Минимум: 10 USDT"
     )
-    await callback.answer()
+
+@dp.message()
+async def echo(msg: types.Message):
+    kb = ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text="Обмен USDT на RUB", web_app=WebAppInfo(url=WEBAPP_URL))],
+            [KeyboardButton(text="Поддержка"), KeyboardButton(text="Курс")]
+        ],
+        resize_keyboard=True
+    )
+    await msg.answer(
+        "Используйте кнопки ниже для навигации.",
+        reply_markup=kb
+    )
 
 async def main():
+    await bot.delete_webhook(drop_pending_updates=True)
     await dp.start_polling(bot)
 
-def start_bot():
-    """Запуск бота"""
-    logging.info("Starting Telegram bot...")
+if __name__ == "__main__":
     asyncio.run(main())
-
-if __name__ == '__main__':
-    start_bot()

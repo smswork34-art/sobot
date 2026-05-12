@@ -14,8 +14,8 @@ WEBAPP_URL = "https://smswork34-art.github.io/p2p/index.html"
 ADMIN_PANEL_URL = "https://smswork34-art.github.io/admin/index.html"
 RENDER_URL = "https://lvk-bot.onrender.com"
 PORT = int(os.getenv("PORT", 10000))
-SUPPORT_GROUP = -1003921995230
 
+ADMIN_ID = 7518728008
 ADMINS = [7518728008]
 
 bot = Bot(token=BOT_TOKEN)
@@ -105,14 +105,6 @@ def get_user_count():
 
 def is_admin(user_id):
     return user_id in ADMINS
-
-async def send_to_group(text):
-    try:
-        await bot.send_message(SUPPORT_GROUP, text, parse_mode="HTML")
-        return True
-    except Exception as e:
-        print(f"ERROR sending to group: {e}")
-        return False
 
 @dp.message(Command("start"))
 async def cmd_start(msg: types.Message):
@@ -288,15 +280,9 @@ async def admin_command(msg: types.Message):
     ])
     await msg.answer("<b>◆ Админ-меню</b>", reply_markup=kb, parse_mode="HTML")
 
-@dp.message(Command("test"))
-async def test_cmd(msg: types.Message):
-    await bot.send_message(SUPPORT_GROUP, "Тест: бот в группе!")
-    await msg.answer("Отправил тест в группу")
-
 @dp.message(F.text)
 async def handle_message(msg: types.Message):
     save_user(msg.from_user)
-
     ticket = get_open_ticket(msg.from_user.id)
     if ticket:
         user_info = f"@{msg.from_user.username}" if msg.from_user.username else f"ID: {msg.from_user.id}"
@@ -305,11 +291,12 @@ async def handle_message(msg: types.Message):
             f"<b>От:</b> {user_info}\n"
             f"<code>{msg.text}</code>"
         )
-        ok = await send_to_group(text)
-        if ok:
-            await msg.answer("<b>◇ Вопрос отправлен.</b>\n<i>Ожидайте ответа.</i>", parse_mode="HTML")
-        else:
-            await msg.answer("<b>◇ Ошибка отправки.</b>\n<i>Попробуйте позже или напишите в поддержку.</i>", parse_mode="HTML")
+        await bot.send_message(ADMIN_ID, text, parse_mode="HTML")
+        await msg.answer(
+            "<b>◇ Тикет открыт</b>\n"
+            "<i>Ваш вопрос отправлен. Ожидайте ответа.</i>",
+            parse_mode="HTML"
+        )
     else:
         kb = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="◆ Открыть обменник", web_app=WebAppInfo(url=WEBAPP_URL))],
@@ -327,11 +314,10 @@ async def handle_message(msg: types.Message):
 
 @dp.message(F.reply_to_message)
 async def handle_reply(msg: types.Message):
-    if msg.chat.id != SUPPORT_GROUP:
+    if msg.from_user.id != ADMIN_ID:
         return
     if not msg.reply_to_message or not msg.reply_to_message.text:
         return
-
     text = msg.reply_to_message.text
     for line in text.split("\n"):
         if "ID:" in line:

@@ -106,6 +106,14 @@ def get_user_count():
 def is_admin(user_id):
     return user_id in ADMINS
 
+async def send_to_group(text):
+    try:
+        await bot.send_message(SUPPORT_GROUP, text, parse_mode="HTML")
+        return True
+    except Exception as e:
+        print(f"ERROR sending to group: {e}")
+        return False
+
 @dp.message(Command("start"))
 async def cmd_start(msg: types.Message):
     save_user(msg.from_user)
@@ -115,11 +123,11 @@ async def cmd_start(msg: types.Message):
             InlineKeyboardButton(text="◎ Курс", callback_data="rate", style="primary"),
             InlineKeyboardButton(text="◈ Поддержка", callback_data="support", style="primary")
         ],
-        [InlineKeyboardButton(text="◇ Задать вопрос", callback_data="ask_question", style="primary")]
+        [InlineKeyboardButton(text="◇ Задать вопрос", callback_data="ask_question", style="danger")]
     ])
     if is_admin(msg.from_user.id):
         kb.inline_keyboard.append([
-            InlineKeyboardButton(text="◆ Админ-панель", web_app=WebAppInfo(url=ADMIN_PANEL_URL), style="primary")
+            InlineKeyboardButton(text="◆ Админ-панель", web_app=WebAppInfo(url=ADMIN_PANEL_URL))
         ])
     await msg.answer(
         "<b>◆ USDT RUB Обменник</b>\n\n"
@@ -155,7 +163,7 @@ async def support_callback(call: types.CallbackQuery):
     await call.answer()
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="◈ Написать в поддержку", url=f"https://t.me/{ADMIN_USERNAME.lstrip('@')}")],
-        [InlineKeyboardButton(text="◇ Задать вопрос здесь", callback_data="ask_question", style="primary")],
+        [InlineKeyboardButton(text="◇ Задать вопрос здесь", callback_data="ask_question", style="danger")],
         [InlineKeyboardButton(text="◈ В главное меню", callback_data="back_to_main", style="primary")]
     ])
     await call.message.answer(
@@ -199,6 +207,12 @@ async def close_ticket_callback(call: types.CallbackQuery):
     close_ticket(call.from_user.id)
     await call.message.answer("<b>◇ Тикет закрыт.</b>", parse_mode="HTML")
 
+@dp.callback_query(F.data == "admin_stats")
+async def admin_stats_callback(call: types.CallbackQuery):
+    await call.answer()
+    count = get_user_count()
+    await call.message.answer(f"<b>◆ Статистика</b>\n\nВсего пользователей: <b>{count}</b>", parse_mode="HTML")
+
 @dp.callback_query(F.data == "back_to_main")
 async def back_to_main_callback(call: types.CallbackQuery):
     await call.answer()
@@ -208,11 +222,11 @@ async def back_to_main_callback(call: types.CallbackQuery):
             InlineKeyboardButton(text="◎ Курс", callback_data="rate", style="primary"),
             InlineKeyboardButton(text="◈ Поддержка", callback_data="support", style="primary")
         ],
-        [InlineKeyboardButton(text="◇ Задать вопрос", callback_data="ask_question", style="primary")]
+        [InlineKeyboardButton(text="◇ Задать вопрос", callback_data="ask_question", style="danger")]
     ])
     if is_admin(call.from_user.id):
         kb.inline_keyboard.append([
-            InlineKeyboardButton(text="◆ Админ-панель", web_app=WebAppInfo(url=ADMIN_PANEL_URL), style="primary")
+            InlineKeyboardButton(text="◆ Админ-панель", web_app=WebAppInfo(url=ADMIN_PANEL_URL))
         ])
     await call.message.answer("<b>◆ Главное меню</b>", reply_markup=kb, parse_mode="HTML")
 
@@ -269,30 +283,28 @@ async def admin_command(msg: types.Message):
     if not is_admin(msg.from_user.id):
         return
     kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="◆ Админ-панель", web_app=WebAppInfo(url=ADMIN_PANEL_URL), style="primary")],
+        [InlineKeyboardButton(text="◆ Админ-панель", web_app=WebAppInfo(url=ADMIN_PANEL_URL))],
         [InlineKeyboardButton(text="◆ Статистика", callback_data="admin_stats", style="primary")]
     ])
     await msg.answer("<b>◆ Админ-меню</b>", reply_markup=kb, parse_mode="HTML")
 
-@dp.callback_query(F.data == "admin_stats")
-async def admin_stats_callback(call: types.CallbackQuery):
-    await call.answer()
-    count = get_user_count()
-    await call.message.answer(f"<b>◆ Статистика</b>\n\nВсего пользователей: <b>{count}</b>", parse_mode="HTML")
-
 @dp.message(F.text)
 async def handle_message(msg: types.Message):
     save_user(msg.from_user)
+
     ticket = get_open_ticket(msg.from_user.id)
     if ticket:
         user_info = f"@{msg.from_user.username}" if msg.from_user.username else f"ID: {msg.from_user.id}"
         text = (
-            f"<b>◇ Новое сообщение в тикете #{ticket[0]}</b>\n"
+            f"<b>◇ Тикет #{ticket[0]}</b>\n"
             f"<b>От:</b> {user_info}\n"
             f"<code>{msg.text}</code>"
         )
-        await bot.send_message(SUPPORT_GROUP, text, parse_mode="HTML")
-        await msg.answer("<b>◇ Ваш вопрос отправлен в поддержку.</b>\n<i>Ожидайте ответа.</i>", parse_mode="HTML")
+        ok = await send_to_group(text)
+        if ok:
+            await msg.answer("<b>◇ Вопрос отправлен.</b>\n<i>Ожидайте ответа.</i>", parse_mode="HTML")
+        else:
+            await msg.answer("<b>◇ Ошибка отправки.</b>\n<i>Попробуйте позже или напишите в поддержку.</i>", parse_mode="HTML")
     else:
         kb = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="◆ Открыть обменник", web_app=WebAppInfo(url=WEBAPP_URL))],
@@ -300,11 +312,11 @@ async def handle_message(msg: types.Message):
                 InlineKeyboardButton(text="◎ Курс", callback_data="rate", style="primary"),
                 InlineKeyboardButton(text="◈ Поддержка", callback_data="support", style="primary")
             ],
-            [InlineKeyboardButton(text="◇ Задать вопрос", callback_data="ask_question", style="primary")]
+            [InlineKeyboardButton(text="◇ Задать вопрос", callback_data="ask_question", style="danger")]
         ])
         if is_admin(msg.from_user.id):
             kb.inline_keyboard.append([
-                InlineKeyboardButton(text="◆ Админ-панель", web_app=WebAppInfo(url=ADMIN_PANEL_URL), style="primary")
+                InlineKeyboardButton(text="◆ Админ-панель", web_app=WebAppInfo(url=ADMIN_PANEL_URL))
             ])
         await msg.answer("<b>◆ Используйте кнопки ниже.</b>", reply_markup=kb, parse_mode="HTML")
 
@@ -314,9 +326,8 @@ async def handle_reply(msg: types.Message):
         return
     if not msg.reply_to_message or not msg.reply_to_message.text:
         return
+
     text = msg.reply_to_message.text
-    if "От:" not in text and "ID:" not in text:
-        return
     for line in text.split("\n"):
         if "ID:" in line:
             try:
@@ -326,7 +337,7 @@ async def handle_reply(msg: types.Message):
                     f"<b>◇ Ответ поддержки:</b>\n<code>{msg.text}</code>",
                     parse_mode="HTML"
                 )
-                await msg.answer("<b>◇ Ответ отправлен клиенту.</b>", parse_mode="HTML")
+                await msg.answer("<b>◇ Ответ отправлен.</b>", parse_mode="HTML")
                 return
             except Exception:
                 pass

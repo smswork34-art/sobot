@@ -4,12 +4,21 @@ from aiogram import Bot, Dispatcher, types, F
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo
 from aiogram.filters import Command
 
-BOT_TOKEN = os.getenv("BOT_TOKEN", "8783429061:AAHdivmiLwPts6u2cOUSRp_78RGf81PSP1w")
-ADMIN_USERNAME = os.getenv("ADMIN_USERNAME", "@support_usdt_rub")
-WEBAPP_URL = os.getenv("WEBAPP_URL", "https://твой-сайт.com/index.html")
+BOT_TOKEN = "8783429061:AAHdivmiLwPts6u2cOUSRp_78RGf81PSP1w"
+ADMIN_ID = 7518728008
+ADMIN_USERNAME = "@support_usdt_rub"
+WEBAPP_URL = "https://smswork34-art.github.io/p2p/index.html"
 
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
+
+async def keep_alive():
+    while True:
+        try:
+            await bot.send_message(ADMIN_ID, "◇ Бот активен")
+            await asyncio.sleep(600)
+        except Exception:
+            await asyncio.sleep(600)
 
 @dp.message(Command("start"))
 async def cmd_start(msg: types.Message):
@@ -93,6 +102,7 @@ async def echo(msg: types.Message):
     )
 
 async def main():
+    asyncio.create_task(keep_alive())
     await bot.delete_webhook(drop_pending_updates=True)
     await dp.start_polling(bot)
 

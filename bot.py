@@ -112,14 +112,14 @@ async def cmd_start(msg: types.Message):
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="◆ Открыть обменник", web_app=WebAppInfo(url=WEBAPP_URL))],
         [
-            InlineKeyboardButton(text="◎ Курс", callback_data="rate"),
-            InlineKeyboardButton(text="◈ Поддержка", callback_data="support")
+            InlineKeyboardButton(text="◎ Курс", callback_data="rate", style="primary"),
+            InlineKeyboardButton(text="◈ Поддержка", callback_data="support", style="primary")
         ],
-        [InlineKeyboardButton(text="◇ Задать вопрос", callback_data="ask_question")]
+        [InlineKeyboardButton(text="◇ Задать вопрос", callback_data="ask_question", style="primary")]
     ])
     if is_admin(msg.from_user.id):
         kb.inline_keyboard.append([
-            InlineKeyboardButton(text="◆ Админ-панель", web_app=WebAppInfo(url=ADMIN_PANEL_URL))
+            InlineKeyboardButton(text="◆ Админ-панель", web_app=WebAppInfo(url=ADMIN_PANEL_URL), style="primary")
         ])
     await msg.answer(
         "<b>◆ USDT RUB Обменник</b>\n\n"
@@ -135,6 +135,10 @@ async def cmd_start(msg: types.Message):
 @dp.callback_query(F.data == "rate")
 async def rate_callback(call: types.CallbackQuery):
     await call.answer()
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="◆ Открыть обменник", web_app=WebAppInfo(url=WEBAPP_URL))],
+        [InlineKeyboardButton(text="◈ В главное меню", callback_data="back_to_main", style="primary")]
+    ])
     await call.message.answer(
         "<b>◎ Актуальный курс</b>\n\n"
         "<i>Обмен от 63 USDT</i>\n\n"
@@ -142,6 +146,7 @@ async def rate_callback(call: types.CallbackQuery):
         "Комиссия: 0.5%\n"
         "Минимальная сумма: 63 USDT</blockquote>\n"
         "<b>Курс фиксируется при создании заявки.</b>",
+        reply_markup=kb,
         parse_mode="HTML"
     )
 
@@ -150,7 +155,8 @@ async def support_callback(call: types.CallbackQuery):
     await call.answer()
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="◈ Написать в поддержку", url=f"https://t.me/{ADMIN_USERNAME.lstrip('@')}")],
-        [InlineKeyboardButton(text="◇ Задать вопрос здесь", callback_data="ask_question")]
+        [InlineKeyboardButton(text="◇ Задать вопрос здесь", callback_data="ask_question", style="primary")],
+        [InlineKeyboardButton(text="◈ В главное меню", callback_data="back_to_main", style="primary")]
     ])
     await call.message.answer(
         "<b>◈ Поддержка</b>\n\n"
@@ -167,18 +173,48 @@ async def ask_question_callback(call: types.CallbackQuery):
     await call.answer()
     ticket = get_open_ticket(call.from_user.id)
     if ticket:
+        kb = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="◇ Закрыть тикет", callback_data="close_ticket", style="danger")]
+        ])
         await call.message.answer(
             "<b>◇ У вас уже есть открытый тикет.</b>\n"
-            "<i>Дождитесь ответа или закройте текущий тикет: /close</i>",
+            "<i>Дождитесь ответа или закройте текущий тикет.</i>",
+            reply_markup=kb,
             parse_mode="HTML"
         )
         return
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="◇ Отмена", callback_data="back_to_main", style="danger")]
+    ])
     await call.message.answer(
         "<b>◇ Задайте ваш вопрос</b>\n\n"
-        "<i>Напишите сообщение с вопросом, и я передам его в поддержку.</i>\n"
-        "Для отмены: /close",
+        "<i>Напишите сообщение с вопросом, и я передам его в поддержку.</i>",
+        reply_markup=kb,
         parse_mode="HTML"
     )
+
+@dp.callback_query(F.data == "close_ticket")
+async def close_ticket_callback(call: types.CallbackQuery):
+    await call.answer()
+    close_ticket(call.from_user.id)
+    await call.message.answer("<b>◇ Тикет закрыт.</b>", parse_mode="HTML")
+
+@dp.callback_query(F.data == "back_to_main")
+async def back_to_main_callback(call: types.CallbackQuery):
+    await call.answer()
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="◆ Открыть обменник", web_app=WebAppInfo(url=WEBAPP_URL))],
+        [
+            InlineKeyboardButton(text="◎ Курс", callback_data="rate", style="primary"),
+            InlineKeyboardButton(text="◈ Поддержка", callback_data="support", style="primary")
+        ],
+        [InlineKeyboardButton(text="◇ Задать вопрос", callback_data="ask_question", style="primary")]
+    ])
+    if is_admin(call.from_user.id):
+        kb.inline_keyboard.append([
+            InlineKeyboardButton(text="◆ Админ-панель", web_app=WebAppInfo(url=ADMIN_PANEL_URL), style="primary")
+        ])
+    await call.message.answer("<b>◆ Главное меню</b>", reply_markup=kb, parse_mode="HTML")
 
 @dp.message(Command("close"))
 async def close_command(msg: types.Message):
@@ -233,8 +269,8 @@ async def admin_command(msg: types.Message):
     if not is_admin(msg.from_user.id):
         return
     kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="◆ Админ-панель", web_app=WebAppInfo(url=ADMIN_PANEL_URL))],
-        [InlineKeyboardButton(text="◆ Статистика", callback_data="admin_stats")]
+        [InlineKeyboardButton(text="◆ Админ-панель", web_app=WebAppInfo(url=ADMIN_PANEL_URL), style="primary")],
+        [InlineKeyboardButton(text="◆ Статистика", callback_data="admin_stats", style="primary")]
     ])
     await msg.answer("<b>◆ Админ-меню</b>", reply_markup=kb, parse_mode="HTML")
 
@@ -247,7 +283,6 @@ async def admin_stats_callback(call: types.CallbackQuery):
 @dp.message(F.text)
 async def handle_message(msg: types.Message):
     save_user(msg.from_user)
-
     ticket = get_open_ticket(msg.from_user.id)
     if ticket:
         user_info = f"@{msg.from_user.username}" if msg.from_user.username else f"ID: {msg.from_user.id}"
@@ -262,14 +297,14 @@ async def handle_message(msg: types.Message):
         kb = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="◆ Открыть обменник", web_app=WebAppInfo(url=WEBAPP_URL))],
             [
-                InlineKeyboardButton(text="◎ Курс", callback_data="rate"),
-                InlineKeyboardButton(text="◈ Поддержка", callback_data="support")
+                InlineKeyboardButton(text="◎ Курс", callback_data="rate", style="primary"),
+                InlineKeyboardButton(text="◈ Поддержка", callback_data="support", style="primary")
             ],
-            [InlineKeyboardButton(text="◇ Задать вопрос", callback_data="ask_question")]
+            [InlineKeyboardButton(text="◇ Задать вопрос", callback_data="ask_question", style="primary")]
         ])
         if is_admin(msg.from_user.id):
             kb.inline_keyboard.append([
-                InlineKeyboardButton(text="◆ Админ-панель", web_app=WebAppInfo(url=ADMIN_PANEL_URL))
+                InlineKeyboardButton(text="◆ Админ-панель", web_app=WebAppInfo(url=ADMIN_PANEL_URL), style="primary")
             ])
         await msg.answer("<b>◆ Используйте кнопки ниже.</b>", reply_markup=kb, parse_mode="HTML")
 

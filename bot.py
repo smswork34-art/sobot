@@ -1,312 +1,226 @@
 import asyncio
 import os
-import sqlite3
-from datetime import datetime
+from decimal import Decimal
 from aiogram import Bot, Dispatcher, types, F
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo, FSInputFile
 from aiogram.filters import Command
-from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
-from aiohttp import web
+from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import State, StatesGroup
+from aiogram.fsm.storage.memory import MemoryStorage
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+from supabase import create_client, Client
 
-BOT_TOKEN = "8783429061:AAHdivmiLwPts6u2cOUSRp_78RGf81PSP1w"
-ADMIN_USERNAME = "@support_usdt_rub"
-WEBAPP_URL = "https://smswork34-art.github.io/p2p/index.html"
-ADMIN_PANEL_URL = "https://smswork34-art.github.io/admin/index.html"
-RENDER_URL = "https://lvk-bot.onrender.com"
-PORT = int(os.getenv("PORT", 10000))
-
+# Конфигурация
+BOT_TOKEN = "8714933043:AAHIP0WJk1SycaKYawxIpT555q1cR4yYlkg"
 ADMIN_ID = 7518728008
-ADMINS = [7518728008]
+SUPABASE_URL = "https://cpvgdwhcumzbjiurlemm.supabase.co"
+SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNwdmdkd2hjdW16YmppdXJsZW1tIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg1MjQ4MTksImV4cCI6MjA5NDEwMDgxOX0.kWU2RgofpNUnR74aYWJpw0OCU7c5taDtu69nlXircpM"
 
+# Инициализация
 bot = Bot(token=BOT_TOKEN)
-dp = Dispatcher()
+dp = Dispatcher(storage=MemoryStorage())
+supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-def init_db():
-    conn = sqlite3.connect("bot.db")
-    c = conn.cursor()
-    c.execute("""
-        CREATE TABLE IF NOT EXISTS users (
-            id INTEGER PRIMARY KEY,
-            username TEXT,
-            first_name TEXT,
-            role TEXT DEFAULT 'user',
-            created_at TEXT,
-            last_active TEXT,
-            blocked INTEGER DEFAULT 0
-        )
-    """)
-    conn.commit()
-    conn.close()
+# Состояния
+class PaymentStates(StatesGroup):
+    waiting_for_amount = State()
 
-def save_user(user: types.User):
-    conn = sqlite3.connect("bot.db")
-    c = conn.cursor()
-    c.execute("""
-        INSERT OR REPLACE INTO users (id, username, first_name, role, created_at, last_active)
-        VALUES (?, ?, ?,
-            COALESCE((SELECT role FROM users WHERE id = ?), 'user'),
-            COALESCE((SELECT created_at FROM users WHERE id = ?), ?),
-            ?
-        )
-    """, (user.id, user.username, user.first_name, user.id, user.id, datetime.utcnow().isoformat(), datetime.utcnow().isoformat()))
-    conn.commit()
-    conn.close()
+# Временное хранилище для связи файла с пользователем
+file_user_map = {}
 
-def get_all_users():
-    conn = sqlite3.connect("bot.db")
-    c = conn.cursor()
-    c.execute("SELECT * FROM users ORDER BY last_active DESC")
-    users = c.fetchall()
-    conn.close()
-    return users
+# Клавиатуры
+def get_start_keyboard():
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="📤 Загрузить токены", callback_data="upload_tokens")]
+    ])
 
-def get_user_count():
-    conn = sqlite3.connect("bot.db")
-    c = conn.cursor()
-    c.execute("SELECT COUNT(*) FROM users")
-    count = c.fetchone()[0]
-    conn.close()
-    return count
+def get_admin_keyboard(file_id: str):
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="❌ Блок", callback_data=f"block_{file_id}")],
+        [InlineKeyboardButton(text="💰 Ввести кол-во оплаты", callback_data=f"amount_{file_id}")],
+        [InlineKeyboardButton(text="🔄 Слет все сразу", callback_data=f"decline_{file_id}")]
+    ])
 
-def is_admin(user_id):
-    return user_id in ADMINS
-
+# Обработчики
 @dp.message(Command("start"))
-async def cmd_start(msg: types.Message):
-    save_user(msg.from_user)
-    kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="◆ Открыть обменник", web_app=WebAppInfo(url=WEBAPP_URL))],
-        [
-            InlineKeyboardButton(text="◎ Курс", callback_data="rate", style="primary"),
-            InlineKeyboardButton(text="◈ Поддержка", callback_data="support", style="primary")
-        ]
-    ])
-    if is_admin(msg.from_user.id):
-        kb.inline_keyboard.append([
-            InlineKeyboardButton(text="◆ Админ-панель", web_app=WebAppInfo(url=ADMIN_PANEL_URL))
-        ])
+async def start_command(message: types.Message):
+    # Сохраняем пользователя в БД
     try:
-        photo = FSInputFile("banner.jpg")
-        await msg.answer_photo(
-            photo,
-            caption=(
-                "<b>◆ USDT RUB Обменник</b>\n\n"
-                "<i>Моментальный обмен USDT на RUB</i>\n\n"
-                "<blockquote>Курс фиксируется при создании заявки\n"
-                "Комиссия сервиса 0.5%\n"
-                "Выплаты на карты СБП</blockquote>\n"
-                "<b>◆ Для начала нажмите кнопку ниже.</b>"
-            ),
-            reply_markup=kb,
-            parse_mode="HTML"
+        supabase.table("users").upsert({
+            "user_id": message.from_user.id,
+            "username": message.from_user.username,
+            "first_name": message.from_user.first_name
+        }).execute()
+    except Exception as e:
+        print(f"Error saving user: {e}")
+    
+    await message.answer(
+        f"👋 Привет, {message.from_user.first_name}!\n\n"
+        "Я бот для приёмки токенов MAX на RENDER.\n"
+        "Нажми кнопку ниже, чтобы загрузить файл с токенами.",
+        reply_markup=get_start_keyboard()
+    )
+
+@dp.callback_query(F.data == "upload_tokens")
+async def upload_tokens(callback: types.CallbackQuery):
+    await callback.message.answer("📎 Пожалуйста, загрузите файл токенов в формате .txt")
+    await callback.answer()
+
+@dp.message(F.document)
+async def handle_document(message: types.Message):
+    if not message.document.file_name.endswith('.txt'):
+        await message.answer("❌ Пожалуйста, загрузите файл в формате .txt")
+        return
+    
+    # Сохраняем связь файла с пользователем
+    file_id = message.document.file_id
+    file_user_map[file_id] = {
+        "user_id": message.from_user.id,
+        "username": message.from_user.username,
+        "first_name": message.from_user.first_name,
+        "file_name": message.document.file_name
+    }
+    
+    # Создаем транзакцию в БД
+    try:
+        supabase.table("transactions").insert({
+            "user_id": message.from_user.id,
+            "file_name": message.document.file_name,
+            "status": "pending",
+            "amount": 0
+        }).execute()
+    except Exception as e:
+        print(f"Error creating transaction: {e}")
+    
+    # Пересылаем файл админу
+    await bot.send_document(
+        ADMIN_ID,
+        message.document.file_id,
+        caption=f"📄 Файл от @{message.from_user.username or 'нет юзернейма'} "
+                f"(ID: {message.from_user.id})\n"
+                f"Имя: {message.from_user.first_name}",
+        reply_markup=get_admin_keyboard(file_id)
+    )
+    
+    await message.answer("✅ Файл загружен, ожидайте пополнение счета")
+
+@dp.callback_query(F.data.startswith("block_"))
+async def block_file(callback: types.CallbackQuery):
+    file_id = callback.data.replace("block_", "")
+    user_data = file_user_map.get(file_id)
+    
+    if user_data:
+        # Обновляем статус в БД
+        supabase.table("transactions").update({"status": "blocked"}).eq(
+            "user_id", user_data["user_id"]
+        ).eq("status", "pending").execute()
+        
+        # Отправляем уведомление пользователю
+        await bot.send_message(
+            user_data["user_id"],
+            "❌ Блок, нет оплаты"
         )
-    except Exception:
-        await msg.answer(
-            "<b>◆ USDT RUB Обменник</b>\n\n"
-            "<i>Моментальный обмен USDT на RUB</i>\n\n"
-            "<blockquote>Курс фиксируется при создании заявки\n"
-            "Комиссия сервиса 0.5%\n"
-            "Выплаты на карты СБП</blockquote>\n"
-            "<b>◆ Для начала нажмите кнопку ниже.</b>",
-            reply_markup=kb,
-            parse_mode="HTML"
+        
+        await callback.message.edit_caption(
+            callback.message.caption + "\n\n❌ ЗАБЛОКИРОВАНО",
+            reply_markup=None
         )
+    
+    await callback.answer("Файл заблокирован")
 
-@dp.callback_query(F.data == "rate")
-async def rate_callback(call: types.CallbackQuery):
-    await call.answer()
-    kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="◆ Открыть обменник", web_app=WebAppInfo(url=WEBAPP_URL))],
-        [InlineKeyboardButton(text="◈ В главное меню", callback_data="back_to_main", style="primary")]
-    ])
-    await call.message.answer(
-        "<b>◎ Актуальный курс</b>\n\n"
-        "<i>Обмен от 63 USDT</i>\n\n"
-        "<blockquote>80 RUB = 1 USDT\n"
-        "Комиссия: 0.5%\n"
-        "Минимальная сумма: 63 USDT</blockquote>\n"
-        "<b>Курс фиксируется при создании заявки.</b>",
-        reply_markup=kb,
-        parse_mode="HTML"
-    )
-
-@dp.callback_query(F.data == "support")
-async def support_callback(call: types.CallbackQuery):
-    await call.answer()
-    kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="◈ В главное меню", callback_data="back_to_main", style="primary")]
-    ])
-    await call.message.answer(
-        "<b>◈ Поддержка</b>\n\n"
-        "<i>Чтобы создать тикет, введите команду:</i>\n"
-        "<code>/ticket ваш вопрос</code>\n\n"
-        "<blockquote>Пример:\n"
-        "/ticket Не пришли деньги после оплаты</blockquote>\n"
-        "<b>Время ответа: 5-15 минут.</b>",
-        reply_markup=kb,
-        parse_mode="HTML"
-    )
-
-@dp.callback_query(F.data == "admin_stats")
-async def admin_stats_callback(call: types.CallbackQuery):
-    await call.answer()
-    count = get_user_count()
-    await call.message.answer(f"<b>◆ Статистика</b>\n\nВсего пользователей: <b>{count}</b>", parse_mode="HTML")
-
-@dp.callback_query(F.data == "back_to_main")
-async def back_to_main_callback(call: types.CallbackQuery):
-    await call.answer()
-    kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="◆ Открыть обменник", web_app=WebAppInfo(url=WEBAPP_URL))],
-        [
-            InlineKeyboardButton(text="◎ Курс", callback_data="rate", style="primary"),
-            InlineKeyboardButton(text="◈ Поддержка", callback_data="support", style="primary")
-        ]
-    ])
-    if is_admin(call.from_user.id):
-        kb.inline_keyboard.append([
-            InlineKeyboardButton(text="◆ Админ-панель", web_app=WebAppInfo(url=ADMIN_PANEL_URL))
-        ])
-    await call.message.answer("<b>◆ Главное меню</b>", reply_markup=kb, parse_mode="HTML")
-
-@dp.message(Command("ticket"))
-async def ticket_command(msg: types.Message):
-    save_user(msg.from_user)
-    text = msg.text.replace("/ticket", "").strip()
-    if not text:
-        await msg.answer(
-            "<b>◇ Укажите вопрос после команды.</b>\n"
-            "<i>Пример:</i> <code>/ticket Не пришли деньги</code>",
-            parse_mode="HTML"
+@dp.callback_query(F.data.startswith("decline_"))
+async def decline_file(callback: types.CallbackQuery):
+    file_id = callback.data.replace("decline_", "")
+    user_data = file_user_map.get(file_id)
+    
+    if user_data:
+        # Обновляем статус в БД
+        supabase.table("transactions").update({"status": "declined"}).eq(
+            "user_id", user_data["user_id"]
+        ).eq("status", "pending").execute()
+        
+        await bot.send_message(
+            user_data["user_id"],
+            "🔄 Всё слет, не оплата"
         )
-        return
+        
+        await callback.message.edit_caption(
+            callback.message.caption + "\n\n🔄 СЛЕТ",
+            reply_markup=None
+        )
+    
+    await callback.answer("Файл отклонён")
 
-    user_info = f"@{msg.from_user.username}" if msg.from_user.username else f"ID: {msg.from_user.id}"
-    admin_text = (
-        f"<b>◇ Новый тикет</b>\n"
-        f"<b>От:</b> {user_info}\n"
-        f"<code>{text}</code>"
-    )
-    await bot.send_message(ADMIN_ID, admin_text, parse_mode="HTML")
-    await msg.answer(
-        "<b>◇ Тикет открыт</b>\n"
-        "<i>Ваш вопрос отправлен. Ожидайте ответа.</i>\n\n"
-        "Для закрытия тикета: /close",
-        parse_mode="HTML"
-    )
+@dp.callback_query(F.data.startswith("amount_"))
+async def set_amount(callback: types.CallbackQuery, state: FSMContext):
+    file_id = callback.data.replace("amount_", "")
+    user_data = file_user_map.get(file_id)
+    
+    if user_data:
+        await state.update_data(current_file_id=file_id, current_user_id=user_data["user_id"])
+        await state.set_state(PaymentStates.waiting_for_amount)
+        await callback.message.answer("💰 Введите сумму оплаты в долларах (например 5.50):")
+    
+    await callback.answer()
 
-@dp.message(Command("close"))
-async def close_command(msg: types.Message):
-    await msg.answer("<b>◇ Тикет закрыт.</b>", parse_mode="HTML")
+@dp.message(PaymentStates.waiting_for_amount)
+async def process_amount(message: types.Message, state: FSMContext):
+    try:
+        amount = Decimal(message.text.replace(",", "."))
+        if amount <= 0:
+            raise ValueError
+        
+        data = await state.get_data()
+        user_id = data["current_user_id"]
+        file_id = data["current_file_id"]
+        
+        # Обновляем баланс пользователя
+        current_user = supabase.table("users").select("balance").eq("user_id", user_id).execute()
+        if current_user.data:
+            new_balance = Decimal(str(current_user.data[0]["balance"])) + amount
+        else:
+            new_balance = amount
+        
+        # Обновляем в БД
+        supabase.table("users").update({"balance": float(new_balance)}).eq("user_id", user_id).execute()
+        supabase.table("transactions").update({
+            "status": "paid",
+            "amount": float(amount)
+        }).eq("user_id", user_id).eq("status", "pending").execute()
+        
+        # Уведомляем пользователя
+        await bot.send_message(
+            user_id,
+            f"✅ Ваш баланс пополнен на ${amount:.2f}\n"
+            f"💰 Текущий баланс: ${new_balance:.2f}"
+        )
+        
+        await message.answer(f"✅ Баланс пользователя пополнен на ${amount:.2f}")
+        await state.clear()
+        
+    except (ValueError, Decimal.InvalidOperation):
+        await message.answer("❌ Пожалуйста, введите корректную сумму (например 5.50)")
 
-@dp.message(Command("rate"))
-async def rate_command(msg: types.Message):
-    await msg.answer(
-        "<b>◎ Курс: 80 RUB за 1 USDT</b>\n"
-        "<i>Обмен от 63 USDT</i>\n\n"
-        "<blockquote>Комиссия: 0.5%\n"
-        "Минимум: 63 USDT</blockquote>",
-        parse_mode="HTML"
-    )
-
-@dp.message(Command("support"))
-async def support_command(msg: types.Message):
-    await msg.answer(
-        "<b>◈ Поддержка</b>\n\n"
-        "<i>Чтобы создать тикет, введите:</i>\n"
-        "<code>/ticket ваш вопрос</code>",
-        parse_mode="HTML"
-    )
-
-@dp.message(Command("stats"))
-async def stats_command(msg: types.Message):
-    if not is_admin(msg.from_user.id):
-        return
-    count = get_user_count()
-    await msg.answer(f"<b>◆ Статистика</b>\n\nВсего пользователей: <b>{count}</b>", parse_mode="HTML")
-
-@dp.message(Command("broadcast"))
-async def broadcast_command(msg: types.Message):
-    if not is_admin(msg.from_user.id):
-        return
-    text = msg.text.replace("/broadcast", "").strip()
-    if not text:
-        await msg.answer("◆ Укажите текст.\nПример: <code>/broadcast Всем привет!</code>", parse_mode="HTML")
-        return
-    users = get_all_users()
-    success = 0
-    for u in users:
-        try:
-            await bot.send_message(u[0], text)
-            success += 1
-            await asyncio.sleep(0.05)
-        except Exception:
-            pass
-    await msg.answer(f"<b>◆ Рассылка завершена</b>\nОтправлено: {success}", parse_mode="HTML")
-
-@dp.message(Command("admin"))
-async def admin_command(msg: types.Message):
-    if not is_admin(msg.from_user.id):
-        return
-    kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="◆ Админ-панель", web_app=WebAppInfo(url=ADMIN_PANEL_URL))],
-        [InlineKeyboardButton(text="◆ Статистика", callback_data="admin_stats", style="primary")]
-    ])
-    await msg.answer("<b>◆ Админ-меню</b>", reply_markup=kb, parse_mode="HTML")
-
-@dp.message(F.text)
-async def handle_message(msg: types.Message):
-    save_user(msg.from_user)
-    kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="◆ Открыть обменник", web_app=WebAppInfo(url=WEBAPP_URL))],
-        [
-            InlineKeyboardButton(text="◎ Курс", callback_data="rate", style="primary"),
-            InlineKeyboardButton(text="◈ Поддержка", callback_data="support", style="primary")
-        ]
-    ])
-    if is_admin(msg.from_user.id):
-        kb.inline_keyboard.append([
-            InlineKeyboardButton(text="◆ Админ-панель", web_app=WebAppInfo(url=ADMIN_PANEL_URL))
-        ])
-    await msg.answer("<b>◆ Используйте кнопки ниже.</b>", reply_markup=kb, parse_mode="HTML")
-
-@dp.message(F.reply_to_message)
-async def handle_reply(msg: types.Message):
-    if msg.from_user.id != ADMIN_ID:
-        return
-    if not msg.reply_to_message or not msg.reply_to_message.text:
-        return
-    text = msg.reply_to_message.text
-    for line in text.split("\n"):
-        if "ID:" in line:
-            try:
-                user_id = int(line.split("ID:")[1].strip())
-                await bot.send_message(
-                    user_id,
-                    f"<b>◇ Ответ поддержки:</b>\n<code>{msg.text}</code>",
-                    parse_mode="HTML"
-                )
-                await msg.answer("<b>◇ Ответ отправлен.</b>", parse_mode="HTML")
-                return
-            except Exception:
-                pass
-    await msg.answer("<b>◇ Не удалось определить пользователя.</b>", parse_mode="HTML")
-
-async def on_startup():
-    init_db()
-    await bot.set_webhook(f"{RENDER_URL}/webhook")
+@dp.message(Command("balance"))
+async def check_balance(message: types.Message):
+    try:
+        result = supabase.table("users").select("balance").eq("user_id", message.from_user.id).execute()
+        if result.data:
+            balance = Decimal(str(result.data[0]["balance"]))
+            await message.answer(f"💰 Ваш баланс: ${balance:.2f}")
+        else:
+            await message.answer("💰 Ваш баланс: $0.00")
+    except Exception as e:
+        await message.answer("❌ Ошибка при получении баланса")
 
 async def main():
-    await on_startup()
-    app = web.Application()
-    handler = SimpleRequestHandler(dispatcher=dp, bot=bot)
-    handler.register(app, path="/webhook")
-    setup_application(app, dp, bot=bot)
-    runner = web.AppRunner(app)
-    await runner.setup()
-    site = web.TCPSite(runner, "0.0.0.0", PORT)
-    await site.start()
-    await asyncio.Event().wait()
+    # Создаем таблицы при первом запуске (если нужно)
+    try:
+        supabase.table("users").select("count").limit(1).execute()
+    except:
+        print("Таблицы не найдены. Создайте их в Supabase SQL Editor")
+    
+    print("Бот запущен!")
+    await dp.start_polling(bot)
 
 if __name__ == "__main__":
     asyncio.run(main())
